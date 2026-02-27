@@ -40,6 +40,14 @@ struct JamfEAAnalyzerApp: App {
                     aboutController.showWindow(nil)
                 }
             }
+            #if DEBUG
+            CommandMenu("Debug") {
+                Button("Toggle Pro") {
+                    LicenseManager.shared.debugTogglePro()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .option, .shift])
+            }
+            #endif
             CommandGroup(after: .newItem) {
                 Divider()
                 Button("Refresh") {

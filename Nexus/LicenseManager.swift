@@ -20,8 +20,29 @@ final class LicenseManager: ObservableObject {
     private let proKey     = "nexus.pro.active"
 
     private init() {
+        #if DEBUG
+        // Override with environment variable for testing:
+        // Edit scheme → Run → Arguments → Environment Variables → NEXUS_PRO = 1
+        if ProcessInfo.processInfo.environment["NEXUS_PRO"] == "1" {
+            isPro = true
+        } else {
+            isPro = UserDefaults.standard.bool(forKey: proKey)
+        }
+        #else
         isPro = UserDefaults.standard.bool(forKey: proKey)
+        #endif
     }
+
+    // MARK: - Debug only
+    #if DEBUG
+    func debugTogglePro() {
+        if isPro {
+            deactivate()
+        } else {
+            activate(licenseKey: "debug-pro-key")
+        }
+    }
+    #endif
 
     // MARK: - Free tier limits
     static let freeServerLimit = 1
