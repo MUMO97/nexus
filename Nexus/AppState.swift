@@ -180,9 +180,31 @@ final class AppState: ObservableObject {
                 isConnected         = true
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = Self.friendlyError(error)
         }
         isLoading = false
+    }
+
+    private static func friendlyError(_ error: Error) -> String {
+        if let jamf = error as? JamfAPIError {
+            return jamf.localizedDescription
+        }
+        let url = error as? URLError
+        switch url?.code {
+        case .cannotFindHost, .dnsLookupFailed:
+            return "Hostname not found. Check the server URL — make sure it matches your Jamf instance exactly (e.g. https://yourorg.jamfcloud.com)."
+        case .notConnectedToInternet, .networkConnectionLost:
+            return "No network connection. Check your internet or VPN."
+        case .timedOut:
+            return "Connection timed out. The server may be unreachable or slow."
+        case .cannotConnectToHost:
+            return "Cannot connect to server. Check the URL and make sure the Jamf instance is online."
+        case .serverCertificateUntrusted, .serverCertificateHasBadDate,
+             .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot:
+            return "SSL certificate error. If your Jamf instance uses a self-signed cert, this may need investigation."
+        default:
+            return error.localizedDescription
+        }
     }
 
     // MARK: Refresh

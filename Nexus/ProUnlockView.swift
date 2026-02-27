@@ -39,15 +39,21 @@ struct ProUnlockView: View {
             // Card
             VStack(spacing: 24) {
                 // Icon
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.proGold.opacity(0.15))
+                ZStack(alignment: .bottomTrailing) {
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
                         .frame(width: 80, height: 80)
-                        .neonGlow(color: AppTheme.proGold, radius: 24)
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 32))
-                        .foregroundColor(AppTheme.proGold)
-                        .neonGlow(color: AppTheme.proGold, radius: 12)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .neonGlow(color: AppTheme.proGold, radius: 20)
+
+                    // PRO badge pinned to corner
+                    Text("PRO")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundColor(AppTheme.background)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(AppTheme.proGold, in: Capsule())
+                        .offset(x: 4, y: 4)
                 }
 
                 VStack(spacing: 8) {
