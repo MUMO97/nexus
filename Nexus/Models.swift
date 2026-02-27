@@ -149,6 +149,49 @@ struct DependencyItem: Identifiable, Codable {
     }
 }
 
+// MARK: - Auto-Scan Interval (Pro)
+enum AutoScanInterval: Int, CaseIterable, Codable {
+    case off      = 0
+    case min30    = 30
+    case hour1    = 60
+    case hour2    = 120
+    case daily    = 1440
+
+    var label: String {
+        switch self {
+        case .off:   return "Off"
+        case .min30: return "Every 30 min"
+        case .hour1: return "Every hour"
+        case .hour2: return "Every 2 hours"
+        case .daily: return "Daily"
+        }
+    }
+
+    var seconds: TimeInterval { TimeInterval(rawValue) * 60 }
+}
+
+// MARK: - Scan Snapshot (Pro — history/delta)
+struct ScanSnapshot: Codable {
+    let date:     Date
+    let eaIDs:    [Int]
+    let statuses: [Int: String]   // eaID → EAStatus.rawValue
+
+    init(eas: [ExtensionAttribute]) {
+        self.date     = Date()
+        self.eaIDs    = eas.map(\.id)
+        self.statuses = Dictionary(uniqueKeysWithValues: eas.map { ($0.id, $0.status.rawValue) })
+    }
+}
+
+// MARK: - Scan Delta (Pro)
+struct ScanDelta {
+    let newIDs:       Set<Int>
+    let removedCount: Int
+    let changedIDs:   Set<Int>
+
+    var hasChanges: Bool { !newIDs.isEmpty || removedCount > 0 || !changedIDs.isEmpty }
+}
+
 // MARK: - Extension Attribute
 struct ExtensionAttribute: Identifiable, Codable {
     let id: Int

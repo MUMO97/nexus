@@ -30,6 +30,9 @@ struct JamfEAAnalyzerApp: App {
             ContentView()
                 .environmentObject(appState)
                 .preferredColorScheme(.dark)
+                .task {
+                    await LicenseManager.shared.verifyOnLaunch()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 780)

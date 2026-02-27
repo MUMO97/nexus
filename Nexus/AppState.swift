@@ -34,6 +34,22 @@ final class AppState: ObservableObject {
     @Published var tokenExpiresAt:  Date?
     @Published var lastScanDate:    Date?
 
+    // MARK: Pro — External Consumer IDs
+    @Published var externalConsumerIDs: Set<Int> = []
+
+    // MARK: Pro — Auto-scan
+    @Published var autoScanInterval: AutoScanInterval = .off {
+        didSet {
+            UserDefaults.standard.set(autoScanInterval.rawValue, forKey: "nexus.autoScanInterval")
+            restartAutoScanTimer()
+        }
+    }
+    @Published var nextAutoScanDate: Date?
+    private var autoScanTimer: Timer?
+
+    // MARK: Pro — Scan delta
+    @Published var scanDelta: ScanDelta?
+
     // MARK: Private services
     private let api    = JamfAPIService()
     private let engine = ScanEngine()
@@ -112,6 +128,8 @@ final class AppState: ObservableObject {
         KeychainService.shared.delete(for: profile.id.uuidString)
         serverProfiles.removeAll { $0.id == profile.id }
         CacheService.clear(for: profile)
+        ScanHistoryService.clear(for: profile)
+        clearExternalConsumers(for: profile)
         saveProfiles()
     }
 
@@ -128,6 +146,10 @@ final class AppState: ObservableObject {
               let decoded = try? JSONDecoder().decode([ServerProfile].self, from: data)
         else { return }
         serverProfiles = decoded
+
+        // Restore auto-scan interval
+        let raw = UserDefaults.standard.integer(forKey: "nexus.autoScanInterval")
+        autoScanInterval = AutoScanInterval(rawValue: raw) ?? .off
     }
 
     private func saveProfiles() {
@@ -146,6 +168,9 @@ final class AppState: ObservableObject {
         isLoading     = true
         errorMessage  = nil
         scanWarning   = nil
+
+        // Load external consumers for this profile
+        loadExternalConsumers(for: profile)
 
         // Show cached results immediately while fresh scan runs
         if let (cached, scanDate) = CacheService.load(for: profile) {
@@ -173,10 +198,14 @@ final class AppState: ObservableObject {
             }
 
             CacheService.save(result.eas, for: profile)
+            ScanHistoryService.save(result.eas, for: profile)
+            let delta = ScanHistoryService.delta(current: result.eas, for: profile)
+
             withAnimation(.spring(duration: 0.5)) {
                 extensionAttributes = result.eas
                 lastScanDate        = Date()
                 scanWarning         = result.warning
+                scanDelta           = delta
                 isConnected         = true
             }
         } catch {
@@ -230,11 +259,16 @@ final class AppState: ObservableObject {
             }
 
             CacheService.save(result.eas, for: profile)
+            ScanHistoryService.save(result.eas, for: profile)
+            let delta = ScanHistoryService.delta(current: result.eas, for: profile)
+
             withAnimation(.spring(duration: 0.4)) {
                 extensionAttributes = result.eas
                 lastScanDate        = Date()
                 scanWarning         = result.warning
+                scanDelta           = delta
             }
+            nextAutoScanDate = autoScanInterval == .off ? nil : Date().addingTimeInterval(autoScanInterval.seconds)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -260,6 +294,8 @@ final class AppState: ObservableObject {
     // MARK: Disconnect
     @MainActor
     func disconnect() {
+        autoScanTimer?.invalidate()
+        autoScanTimer = nil
         withAnimation(.spring(duration: 0.4)) {
             isConnected         = false
             extensionAttributes = []
@@ -271,12 +307,15 @@ final class AppState: ObservableObject {
             tokenExpiresAt      = nil
             lastScanDate        = nil
             scanWarning         = nil
+            scanDelta           = nil
             deleteLog           = []
             filterStatus        = nil
             filterScope         = nil
             filterDataType      = nil
             searchText          = ""
             filterDisabledOnly  = false
+            externalConsumerIDs = []
+            nextAutoScanDate    = nil
         }
     }
 
@@ -285,6 +324,13 @@ final class AppState: ObservableObject {
         ea.scope == .mobile
             ? try await api.fetchMobileEAScript(baseURL: connectedURL, token: connectedToken, id: ea.id)
             : try await api.fetchEAScript(baseURL: connectedURL, token: connectedToken, id: ea.id)
+    }
+
+    // MARK: Pro — EA Script Save
+    @MainActor
+    func saveEAScript(ea: ExtensionAttribute, newScript: String) async throws {
+        _ = try? await ensureFreshToken()
+        try await api.updateEAScript(baseURL: connectedURL, token: connectedToken, id: ea.id, newScript: newScript, scope: ea.scope)
     }
 
     // MARK: Select All Safe (visible list only)
@@ -353,5 +399,56 @@ final class AppState: ObservableObject {
             ? ExportService.htmlPro(eas: data, serverURL: connectedURL, scanDate: lastScanDate)
             : ExportService.html(eas: data, serverURL: connectedURL)
         ExportService.saveHTMLWithPanel(content)
+    }
+
+    // MARK: Pro — External Consumer Management
+
+    func isExternalConsumer(_ ea: ExtensionAttribute) -> Bool {
+        externalConsumerIDs.contains(ea.id)
+    }
+
+    func toggleExternalConsumer(_ ea: ExtensionAttribute) {
+        if externalConsumerIDs.contains(ea.id) {
+            externalConsumerIDs.remove(ea.id)
+        } else {
+            externalConsumerIDs.insert(ea.id)
+        }
+        if let profile = connectedProfile {
+            saveExternalConsumers(for: profile)
+        }
+    }
+
+    private func externalConsumerKey(for profile: ServerProfile) -> String {
+        "nexus.externalConsumers.\(profile.id.uuidString)"
+    }
+
+    private func loadExternalConsumers(for profile: ServerProfile) {
+        let key = externalConsumerKey(for: profile)
+        let ids = UserDefaults.standard.array(forKey: key) as? [Int] ?? []
+        externalConsumerIDs = Set(ids)
+    }
+
+    private func saveExternalConsumers(for profile: ServerProfile) {
+        let key = externalConsumerKey(for: profile)
+        UserDefaults.standard.set(Array(externalConsumerIDs), forKey: key)
+    }
+
+    private func clearExternalConsumers(for profile: ServerProfile) {
+        UserDefaults.standard.removeObject(forKey: externalConsumerKey(for: profile))
+    }
+
+    // MARK: Pro — Auto-Scan Timer
+
+    private func restartAutoScanTimer() {
+        autoScanTimer?.invalidate()
+        autoScanTimer = nil
+        nextAutoScanDate = nil
+        guard autoScanInterval != .off, isConnected else { return }
+        let interval = autoScanInterval.seconds
+        nextAutoScanDate = Date().addingTimeInterval(interval)
+        autoScanTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self, self.isConnected, !self.isLoading else { return }
+            Task { await self.refresh() }
+        }
     }
 }

@@ -36,9 +36,17 @@ struct EmptyDetailView: View {
 
 struct EADetailPanel: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var license = LicenseManager.shared
     let ea: ExtensionAttribute
+
     @State private var script: String? = nil
     @State private var scriptLoading = false
+
+    // Script editing (Pro)
+    @State private var isEditingScript = false
+    @State private var editedScript    = ""
+    @State private var isSavingScript  = false
+    @State private var saveError:       String? = nil
 
     var body: some View {
         ScrollView {
@@ -101,6 +109,18 @@ struct EADetailPanel: View {
                         .background(ea.status.color.opacity(0.12), in: Capsule())
                         .neonGlow(color: ea.status.color, radius: 8)
 
+                        // External consumer badge (Pro)
+                        if license.isPro && appState.isExternalConsumer(ea) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "shield.fill").font(.system(size: 10))
+                                Text("External").font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(AppTheme.proGold)
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(AppTheme.proGold.opacity(0.12), in: Capsule())
+                            .overlay(Capsule().stroke(AppTheme.proGold.opacity(0.3), lineWidth: 1))
+                        }
+
                         Spacer()
 
                         Button {
@@ -155,6 +175,33 @@ struct EADetailPanel: View {
                             .padding(.leading, 8)
                         }
                     }
+
+                    // Pro — External Consumer toggle
+                    if license.isPro {
+                        Divider().overlay(AppTheme.border)
+                        HStack(spacing: 10) {
+                            Image(systemName: "shield.lefthalf.filled")
+                                .font(.system(size: 12))
+                                .foregroundColor(appState.isExternalConsumer(ea) ? AppTheme.proGold : AppTheme.mutedText)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("External Consumer")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(appState.isExternalConsumer(ea) ? .white : AppTheme.mutedText)
+                                Text("Flag if used by SIEM, Cortex, or other external tools")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(AppTheme.mutedText)
+                            }
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { appState.isExternalConsumer(ea) },
+                                set: { _ in appState.toggleExternalConsumer(ea) }
+                            ))
+                            .toggleStyle(.switch)
+                            .scaleEffect(0.7)
+                            .frame(width: 36)
+                            .tint(AppTheme.proGold)
+                        }
+                    }
                 }
                 .padding(20)
                 .glassCard(cornerRadius: 16)
@@ -197,7 +244,7 @@ struct EADetailPanel: View {
                     .glassCard(cornerRadius: 16)
                 }
 
-                // Script Preview
+                // Script section
                 if scriptLoading {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.7)
@@ -210,29 +257,106 @@ struct EADetailPanel: View {
                         HStack {
                             SectionHeader("Script")
                             Spacer()
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(src, forType: .string)
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "doc.on.doc").font(.system(size: 10))
-                                    Text("Copy").font(.system(size: 11))
+                            // Pro: Edit button
+                            if license.isPro && !isEditingScript {
+                                Button {
+                                    editedScript    = src
+                                    saveError       = nil
+                                    isEditingScript = true
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "pencil").font(.system(size: 10))
+                                        Text("Edit").font(.system(size: 11))
+                                    }
+                                    .foregroundColor(AppTheme.proGold)
                                 }
-                                .foregroundColor(AppTheme.accentBlue)
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                            if !isEditingScript {
+                                Button {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(src, forType: .string)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "doc.on.doc").font(.system(size: 10))
+                                        Text("Copy").font(.system(size: 11))
+                                    }
+                                    .foregroundColor(AppTheme.accentBlue)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        ScrollView(.vertical, showsIndicators: true) {
-                            Text(src)
+
+                        if isEditingScript {
+                            // Editable script view
+                            TextEditor(text: $editedScript)
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundColor(Color(hex: "98C379"))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 180, maxHeight: 340)
+                                .padding(12)
+                                .background(Color(hex: "0D1117"), in: RoundedRectangle(cornerRadius: 10))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(AppTheme.proGold.opacity(0.4), lineWidth: 1)
+                                )
+
+                            if let err = saveError {
+                                Text(err)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(AppTheme.dangerRed)
+                            }
+
+                            HStack(spacing: 10) {
+                                Button("Cancel") {
+                                    isEditingScript = false
+                                    saveError       = nil
+                                }
+                                .foregroundColor(AppTheme.mutedText)
+                                .font(.system(size: 12))
+                                .buttonStyle(.plain)
+
+                                Spacer()
+
+                                Button {
+                                    isSavingScript = true
+                                    saveError      = nil
+                                    Task {
+                                        do {
+                                            try await appState.saveEAScript(ea: ea, newScript: editedScript)
+                                            script          = editedScript
+                                            isEditingScript = false
+                                        } catch {
+                                            saveError = "Save failed: \(error.localizedDescription)"
+                                        }
+                                        isSavingScript = false
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if isSavingScript { ProgressView().scaleEffect(0.6) }
+                                        Text(isSavingScript ? "Saving..." : "Save to Jamf")
+                                            .font(.system(size: 12, weight: .semibold))
+                                    }
+                                    .foregroundColor(.black)
+                                    .padding(.horizontal, 14).padding(.vertical, 6)
+                                    .background(AppTheme.proGold, in: RoundedRectangle(cornerRadius: 8))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isSavingScript)
+                            }
+                        } else {
+                            ScrollView(.vertical, showsIndicators: true) {
+                                Text(src)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(Color(hex: "98C379"))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxHeight: 240)
+                            .padding(12)
+                            .background(Color(hex: "0D1117"), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.border, lineWidth: 1))
                         }
-                        .frame(maxHeight: 240)
-                        .padding(12)
-                        .background(Color(hex: "0D1117"), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.border, lineWidth: 1))
                     }
                     .padding(20)
                     .glassCard(cornerRadius: 16)
@@ -243,8 +367,10 @@ struct EADetailPanel: View {
             .padding(16)
         }
         .task(id: ea.id) {
-            script = nil
-            scriptLoading = true
+            script          = nil
+            scriptLoading   = true
+            isEditingScript = false
+            saveError       = nil
             script = try? await appState.fetchEAScript(ea: ea)
             scriptLoading = false
         }

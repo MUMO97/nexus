@@ -10,19 +10,30 @@ struct ProUpgradeView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var license = LicenseManager.shared
 
+    @State private var showActivation = false
+    @State private var licenseKey     = ""
+    @State private var isActivating   = false
+    @State private var activationError: String?
+    @State private var showUnlock     = false
+
     var body: some View {
         VStack(spacing: 0) {
 
             // Header
             VStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.accentBlue.opacity(0.15))
+                ZStack(alignment: .bottomTrailing) {
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
                         .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                         .neonGlow(color: AppTheme.accentBlue, radius: 16)
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 26))
-                        .foregroundColor(AppTheme.accentBlue)
+                    Text("PRO")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundColor(AppTheme.background)
+                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .background(AppTheme.proGold, in: Capsule())
+                        .offset(x: 4, y: 4)
                 }
 
                 Text("Nexus Pro")
@@ -91,32 +102,93 @@ struct ProUpgradeView: View {
                         .foregroundColor(AppTheme.mutedText)
                 }
 
-                Button {
-                    // TODO: Open Paddle checkout URL when approved
-                    NSWorkspace.shared.open(URL(string: "https://mumo97.github.io/nexus")!)
-                    dismiss()
-                } label: {
-                    Text("Upgrade to Pro")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            LinearGradient(
-                                colors: [AppTheme.accentBlue, AppTheme.accentPurple],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .neonGlow(color: AppTheme.accentBlue, radius: 8)
-                }
-                .buttonStyle(.plain)
+                if showActivation {
+                    // License key entry
+                    VStack(spacing: 10) {
+                        TextField("XXXX-XXXX-XXXX-XXXX", text: $licenseKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(10)
+                            .background(AppTheme.background, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
+                            .autocorrectionDisabled()
 
-                Button("Maybe Later") { dismiss() }
-                    .font(.system(size: 12))
-                    .foregroundColor(AppTheme.mutedText)
+                        if let err = activationError {
+                            Text(err)
+                                .font(.system(size: 11))
+                                .foregroundColor(AppTheme.dangerRed)
+                                .multilineTextAlignment(.center)
+                        }
+
+                        Button {
+                            isActivating   = true
+                            activationError = nil
+                            Task {
+                                do {
+                                    try await LicenseManager.shared.activate(licenseKey: licenseKey)
+                                    showUnlock = true
+                                    dismiss()
+                                } catch {
+                                    activationError = error.localizedDescription
+                                }
+                                isActivating = false
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if isActivating { ProgressView().scaleEffect(0.7) }
+                                Text(isActivating ? "Verifying..." : "Activate License")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(AppTheme.proGold)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isActivating || licenseKey.isEmpty)
+                    }
+                } else {
+                    Button {
+                        NSWorkspace.shared.open(URL(string: "https://celeast.gumroad.com/l/nexus")!)
+                    } label: {
+                        Text("Get Nexus Pro — $4.99/mo")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                LinearGradient(
+                                    colors: [AppTheme.accentBlue, AppTheme.accentPurple],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .neonGlow(color: AppTheme.accentBlue, radius: 8)
+                    }
                     .buttonStyle(.plain)
+                }
+
+                HStack(spacing: 16) {
+                    Button(showActivation ? "Back" : "I have a license key") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showActivation.toggle()
+                            activationError = nil
+                        }
+                    }
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.accentBlue)
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Button("Maybe Later") { dismiss() }
+                        .font(.system(size: 12))
+                        .foregroundColor(AppTheme.mutedText)
+                        .buttonStyle(.plain)
+                }
             }
             .padding(24)
             .background(AppTheme.surface)
@@ -124,6 +196,9 @@ struct ProUpgradeView: View {
         .frame(width: 400)
         .background(AppTheme.background)
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showUnlock) {
+            ProUnlockView()
+        }
     }
 }
 

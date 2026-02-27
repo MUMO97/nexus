@@ -204,6 +204,7 @@ struct EAListView: View {
                                 ea: ea,
                                 isSelected: appState.selectedEA?.id == ea.id,
                                 isChecked:  appState.selectedEAIDs.contains(ea.id),
+                                isNew:      appState.scanDelta?.newIDs.contains(ea.id) ?? false,
                                 onToggle: {
                                     if appState.selectedEAIDs.contains(ea.id) {
                                         appState.selectedEAIDs.remove(ea.id)
@@ -328,9 +329,12 @@ struct SortableColumnHeader: View {
 
 // MARK: - EA Row
 struct EARow: View {
+    @EnvironmentObject var appState: AppState
+    @ObservedObject private var license = LicenseManager.shared
     let ea: ExtensionAttribute
     let isSelected: Bool
     let isChecked: Bool
+    let isNew: Bool
     let onToggle: () -> Void
     let onSelect: () -> Void
 
@@ -362,6 +366,20 @@ struct EARow: View {
                             Image(systemName: "iphone")
                                 .font(.system(size: 9))
                                 .foregroundColor(Color(hex: "64D2FF"))
+                        }
+                        // Pro: External consumer shield
+                        if license.isPro && appState.isExternalConsumer(ea) {
+                            Image(systemName: "shield.fill")
+                                .font(.system(size: 9))
+                                .foregroundColor(AppTheme.proGold)
+                        }
+                        // Pro: NEW badge for EAs added since last scan
+                        if license.isPro && isNew {
+                            Text("NEW")
+                                .font(.system(size: 8, weight: .black))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(AppTheme.safeGreen, in: Capsule())
                         }
                     }
                     if !ea.enabled {

@@ -11,7 +11,7 @@ Nexus is a native macOS SwiftUI app for Jamf Pro administrators. It connects to 
 **Built by:** Murat Kolar
 **GitHub:** https://github.com/MUMO97/nexus
 **Support channel:** #nexus-dependency-analyzer on Mac Admins Slack
-**Current version:** 1.1.0
+**Current version:** 1.1.0 (build 2 — signed, notarization pending)
 **License:** GNU GPL v3
 **Apple Developer Team ID:** JH3UVVVHQ4
 
@@ -22,7 +22,8 @@ Nexus is a native macOS SwiftUI app for Jamf Pro administrators. It connects to 
 - **Language:** Swift 5.9
 - **UI:** SwiftUI (macOS 14.0+)
 - **Concurrency:** Swift async/await, TaskGroup
-- **Storage:** UserDefaults (scan cache, server profiles), Keychain (client secrets)
+- **Storage:** UserDefaults (scan cache, server profiles, pro flag), Keychain (client secrets, license key)
+- **Monetisation:** Gumroad subscription ($4.99/mo) at `celeast.gumroad.com/l/nexus` — `LicenseManager` verifies via Gumroad API on activate + launch
 - **Build setting:** `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` — this affects all types, requires `nonisolated` on URLSession delegate methods and struct inits called from background tasks
 - **Xcode:** 16+ (uses PBXFileSystemSynchronizedRootGroup — no manual file registration needed, new .swift files are picked up automatically)
 
@@ -47,7 +48,11 @@ Nexus/
     ├── LoginView.swift         ← server profile management, connect screen
     ├── NodeGraphView.swift     ← SwiftUI dependency node graph visualisation
     ├── AppTheme.swift          ← all colours, gradients, reusable view modifiers
-    ├── KeychainService.swift   ← Keychain read/write/delete for client secrets
+    ├── KeychainService.swift   ← Keychain read/write/delete for client secrets + license key
+    ├── LicenseManager.swift    ← Pro license state, Gumroad API verification, Keychain storage
+    ├── ProUpgradeView.swift    ← Pro upsell sheet: feature list, purchase button, license key entry
+    ├── ProUnlockView.swift     ← celebration screen shown after successful activation
+    ├── ScanHistoryService.swift← persists scan snapshots per profile, computes delta between scans
     ├── JamfEAAnalyzerApp.swift ← app entry point, menu bar keyboard shortcuts
     └── Info.plist
 NexusTests/
@@ -78,6 +83,23 @@ NexusTests/
 - All scanners use XPath on XML responses to avoid Jamf's JSON single-item array serialisation bug
 - `validate()` treats both 401 AND 403 as `insufficientPermissions` (Jamf Classic API returns 401 for permission errors, not 403)
 - `fetchEAScript()` and `fetchMobileEAScript()` read `//input_type/script` XPath from EA XML
+
+### LicenseManager
+- Singleton: `LicenseManager.shared`
+- `@Published isPro: Bool` — gates all Pro UI
+- `activate(licenseKey:)` — calls Gumroad API with `increment_uses_count=true`, saves key to Keychain, sets `nexus.pro.active` in UserDefaults
+- `verifyOnLaunch()` — reads key from Keychain, re-validates against Gumroad on every launch; calls `deactivate()` only if invalid (network errors keep existing state)
+- `deactivate()` — clears Keychain + UserDefaults
+- `debugTogglePro()` — **`#if DEBUG` only**, never compiled into Release
+- Gumroad product ID: `NHdFRF3ja7LP6JZ-hLLqgg==` (URL-encoded in requests)
+- Gumroad URL: `celeast.gumroad.com/l/nexus`
+- Free tier limit: `LicenseManager.freeServerLimit = 1`
+
+### Pro Features
+- **External Consumer Flag** — `externalConsumerIDs: Set<Int>` in AppState, persisted per server profile in UserDefaults; gold shield badge in EAListView + DetailView toggle
+- **EA Script Editing** — inline `TextEditor` in DetailView, Pro-gated; calls `api.updateEAScript()`
+- **Scheduled Auto-Scan** — `autoScanInterval: AutoScanInterval` enum in AppState; `restartAutoScanTimer()` uses `Timer.scheduledTimer`; countdown in SidebarView
+- **Scan History & Delta** — `ScanHistoryService.save()` after every connect/refresh; `ScanDelta` computed from previous vs current EA IDs; NEW badge on EAListView rows; `ScanDeltaCard` in SidebarView
 
 ### Models
 - `ExtensionAttribute` — has `scope: EAScope` (.computer / .mobile), `status: EAStatus`, `dependencies: [DependencyItem]`
@@ -118,25 +140,50 @@ Any init or method called from a `withTaskGroup` or `async let` context that isn
 
 ### Build signed for release
 ```bash
+cd "/Users/mkolar/Desktop/Nexus Jamf EA/Nexus"
 xcodebuild -scheme Nexus -configuration Release \
-  -project "/path/to/Nexus.xcodeproj" \
+  -project "Nexus.xcodeproj" \
   -derivedDataPath /tmp/NexusBuild \
   CODE_SIGN_IDENTITY="Developer ID Application: Murat Kolar (JH3UVVVHQ4)" \
   CODE_SIGN_STYLE=Manual \
   DEVELOPMENT_TEAM=JH3UVVVHQ4 \
+  OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
   SDKROOT=macosx build
 ```
 
-### Notarize
+### Re-sign to remove get-task-allow (REQUIRED after every xcodebuild)
+Xcode injects `get-task-allow` even in Release builds — must strip it before notarization:
 ```bash
-# Submit for notarization (requires app-specific password or API key in Keychain)
+# Clean entitlements file at /tmp/Nexus-release.entitlements (no get-task-allow):
+# com.apple.security.app-sandbox, network.client, files.user-selected.read-write
+
+codesign --force --deep \
+  --sign "Developer ID Application: Murat Kolar (JH3UVVVHQ4)" \
+  --entitlements /tmp/Nexus-release.entitlements \
+  --options runtime \
+  --timestamp \
+  /tmp/NexusBuild/Build/Products/Release/Nexus.app
+
+# Verify get-task-allow is gone:
+codesign -d --entitlements - /tmp/NexusBuild/Build/Products/Release/Nexus.app/Contents/MacOS/Nexus
+```
+
+### Zip, Notarize, Staple
+```bash
+ditto -c -k --keepParent /tmp/NexusBuild/Build/Products/Release/Nexus.app /tmp/Nexus-vX.X.X.zip
+
 xcrun notarytool submit /tmp/Nexus-vX.X.X.zip \
   --team-id JH3UVVVHQ4 \
   --keychain-profile "nexus-notarytool" \
   --wait
 
-# Staple notarization ticket to the app
 xcrun stapler staple /tmp/NexusBuild/Build/Products/Release/Nexus.app
+```
+
+### Check notarization status
+```bash
+xcrun notarytool history --team-id JH3UVVVHQ4 --keychain-profile "nexus-notarytool"
+xcrun notarytool info <submission-id> --team-id JH3UVVVHQ4 --keychain-profile "nexus-notarytool"
 ```
 
 ### Store notarytool credentials (one-time setup)
@@ -171,18 +218,21 @@ Xcode → Nexus target → General → Version field. Use semver: 1.0.1 (bug fix
 - **Duplicate EA names** crash `Dictionary(uniqueKeysWithValues:)` — use `Dictionary(uniquingKeysWith: { first, _ in first })`
 - **PBXFileSystemSynchronizedRootGroup** — this is Xcode 16's auto folder sync. New .swift files added to the Nexus/ folder are automatically included. The NexusTests target also uses this.
 - **Info.plist excluded from Copy Bundle Resources** via `PBXFileSystemSynchronizedBuildFileExceptionSet` in project.pbxproj
+- **get-task-allow entitlement** — Xcode injects this in ALL builds including Release. Always re-sign with `/tmp/Nexus-release.entitlements` after xcodebuild before notarizing. Notarization will fail if this entitlement is present.
+- **Notarization first submission** — first-ever submission from a new developer account can take 30min–2hrs. Subsequent ones are 2–5 min.
+- **Bundle ID** — Debug build from Xcode uses `com.ea.Nexus`. Old installed app in /Applications uses `com.muratkolar.nexus`. These are separate UserDefaults containers. To reset Pro state for testing: `defaults delete com.ea.Nexus nexus.pro.active`
+- **Pro state in Debug** — `debugTogglePro()` is `#if DEBUG` only. To disable Pro for screenshot testing, run: `defaults delete <bundle-id> nexus.pro.active && defaults delete <bundle-id> nexus.license.key` then full Stop → Run in Xcode.
+- **fullScreenCover unavailable on macOS** — use `.sheet()` instead
+- **Gumroad product ID vs permalink** — API uses `product_id=NHdFRF3ja7LP6JZ-hLLqgg==` (URL-encoded), not `product_permalink`. Sample keys from Gumroad settings do not validate via API — need a real purchase key to test.
 
 ---
 
 ## What Could Be Added Next
 
-- **External consumer protection** — EAs used as data holders for external integrations (SIEM tools, Palo Alto Cortex, Tenable, Okta, asset management) show zero internal Jamf dependencies and appear Safe to Delete, but deleting them breaks those integrations silently. Need a way to manually flag EAs as "externally consumed" so they are protected regardless of internal dependency count. Raised by Kyle via LinkedIn — common pattern in environments with Cortex XDR (stores Cortex Device ID in EA to cross-link with Jamf), Splunk/Sentinel SIEM pulls, and vulnerability management platforms correlating on serial/UUID EAs.
 - **PreStage Enrollment scope scanning** (Jamf Pro API v2, different from Classic API)
-- **EA editing** — view and edit EA scripts directly in the app
-- **Scheduled auto-refresh** — rescan on a timer in the background
 - **Brew cask distribution** — `brew install --cask nexus-ea` style install
-- **Delta scan** — only re-scan EAs that changed since last run
 - **Multi-instance comparison** — compare EA usage across two Jamf servers
+- **Delta scan** — only re-scan EAs that changed since last run (currently full rescan every time)
 
 ---
 

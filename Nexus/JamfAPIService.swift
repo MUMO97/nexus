@@ -737,6 +737,34 @@ final class JamfAPIService {
         }
         return nil
     }
+
+    // MARK: Update EA Script (Pro — script editing)
+    func updateEAScript(baseURL: String, token: String, id: Int, newScript: String, scope: EAScope) async throws {
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                          .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let endpoint = scope == .mobile
+            ? "\(base)/JSSResource/mobiledeviceextensionattributes/id/\(id)"
+            : "\(base)/JSSResource/computerextensionattributes/id/\(id)"
+        guard let url = URL(string: endpoint) else { throw JamfAPIError.badURL }
+
+        // Only update the script element; Jamf merges the rest
+        let escapedScript = newScript
+            .replacingOccurrences(of: "&",  with: "&amp;")
+            .replacingOccurrences(of: "<",  with: "&lt;")
+            .replacingOccurrences(of: ">",  with: "&gt;")
+        let xmlBody = scope == .mobile
+            ? "<mobile_device_extension_attribute><input_type><script>\(escapedScript)</script></input_type></mobile_device_extension_attribute>"
+            : "<computer_extension_attribute><input_type><script>\(escapedScript)</script></input_type></computer_extension_attribute>"
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("text/xml", forHTTPHeaderField: "Content-Type")
+        req.httpBody = xmlBody.data(using: .utf8)
+
+        let (_, response) = try await session.data(for: req)
+        try validate(response, endpoint: endpoint)
+    }
 }
 
 private extension String {

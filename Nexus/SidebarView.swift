@@ -158,6 +158,13 @@ struct SidebarView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
                 }
+
+                // Pro — Scan Delta card
+                if license.isPro, let delta = appState.scanDelta {
+                    ScanDeltaCard(delta: delta)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                }
             }
             .padding(.bottom, 8)
 
@@ -221,6 +228,45 @@ struct SidebarView: View {
                 .padding(.vertical, 7)
                 .padding(.horizontal, 8)
                 .help("Include mobile device extension attributes in the scan. Takes effect on the next refresh.")
+
+                // Pro — Auto-Scan interval picker
+                if license.isPro {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 12))
+                            .foregroundColor(appState.autoScanInterval != .off ? AppTheme.proGold : AppTheme.mutedText)
+                            .frame(width: 16)
+                        Text("Auto-Scan")
+                            .font(.system(size: 13))
+                            .foregroundColor(appState.autoScanInterval != .off ? .white : AppTheme.mutedText)
+                        Spacer()
+                        Picker("", selection: $appState.autoScanInterval) {
+                            ForEach(AutoScanInterval.allCases, id: \.self) { interval in
+                                Text(interval.label).tag(interval)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 110)
+                        .tint(appState.autoScanInterval != .off ? AppTheme.proGold : AppTheme.mutedText)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 8)
+
+                    if let next = appState.nextAutoScanDate {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 9))
+                                .foregroundColor(AppTheme.proGold.opacity(0.6))
+                            Text("Next scan: \(next, style: .relative)")
+                                .font(.system(size: 10))
+                                .foregroundColor(AppTheme.mutedText.opacity(0.6))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 4)
+                    }
+                }
             }
             .padding(.bottom, 8)
 
@@ -323,9 +369,11 @@ struct SidebarView: View {
             if !license.isPro {
                 Button { showUpgrade = true } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(AppTheme.accentBlue)
+                        Image("AppLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 18, height: 18)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Upgrade to Nexus Pro")
                                 .font(.system(size: 12, weight: .semibold))
@@ -395,6 +443,53 @@ struct SidebarStatRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Scan Delta Card (Pro)
+struct ScanDeltaCard: View {
+    let delta: ScanDelta
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 10))
+                    .foregroundColor(AppTheme.proGold)
+                Text("Changes since last scan")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(AppTheme.proGold)
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                if !delta.newIDs.isEmpty {
+                    DeltaPill(label: "+\(delta.newIDs.count) New", color: AppTheme.safeGreen)
+                }
+                if delta.removedCount > 0 {
+                    DeltaPill(label: "-\(delta.removedCount) Removed", color: AppTheme.dangerRed)
+                }
+                if !delta.changedIDs.isEmpty {
+                    DeltaPill(label: "~\(delta.changedIDs.count) Changed", color: AppTheme.warningOrange)
+                }
+            }
+        }
+        .padding(10)
+        .background(AppTheme.proGold.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.proGold.opacity(0.2), lineWidth: 1))
+    }
+}
+
+struct DeltaPill: View {
+    let label: String
+    let color: Color
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(color)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(color.opacity(0.12), in: Capsule())
     }
 }
 

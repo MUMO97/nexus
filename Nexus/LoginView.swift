@@ -180,9 +180,11 @@ struct ProfilesCard: View {
             if atFreeLimit {
                 Divider().overlay(AppTheme.border)
                 HStack(spacing: 8) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(AppTheme.accentBlue)
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 14, height: 14)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
                     Text("Upgrade to Pro for unlimited server profiles")
                         .font(.system(size: 11))
                         .foregroundColor(AppTheme.mutedText)
@@ -313,7 +315,15 @@ struct AddServerButton: View {
             if atLimit { showUpgrade = true } else { showAdd = true }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: atLimit ? "star.fill" : "plus.circle.fill")
+                if atLimit {
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 12, height: 12)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                } else {
+                    Image(systemName: "plus.circle.fill")
+                }
                 Text(atLimit ? "Go Pro" : "Add Server")
             }
             .font(.system(size: 12, weight: .semibold))
