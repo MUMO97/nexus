@@ -8,7 +8,9 @@ import Combine
 
 struct LoginView: View {
     @EnvironmentObject var appState: AppState
-    @State private var showAddProfile = false
+    @ObservedObject private var license = LicenseManager.shared
+    @State private var showAddProfile  = false
+    @State private var showUpgrade     = false
 
     var body: some View {
         ZStack {
@@ -41,7 +43,7 @@ struct LoginView: View {
                         if appState.serverProfiles.isEmpty {
                             EmptyProfileCard(showAdd: $showAddProfile)
                         } else {
-                            ProfilesCard(showAdd: $showAddProfile)
+                            ProfilesCard(showAdd: $showAddProfile, showUpgrade: $showUpgrade)
                         }
                     }
                     .frame(width: 440)
@@ -79,6 +81,7 @@ struct LoginView: View {
             }
         }
         .sheet(isPresented: $showAddProfile) { AddProfileSheet().environmentObject(appState) }
+        .sheet(isPresented: $showUpgrade)     { ProUpgradeView() }
     }
 }
 
@@ -127,7 +130,7 @@ struct EmptyProfileCard: View {
                 .font(.system(size: 13))
                 .foregroundColor(AppTheme.mutedText)
                 .multilineTextAlignment(.center)
-            AddServerButton(showAdd: $showAdd)
+            AddServerButton(showAdd: $showAdd, showUpgrade: .constant(false))
         }
         .padding(32)
         .glassCard(cornerRadius: 20)
@@ -137,7 +140,13 @@ struct EmptyProfileCard: View {
 // MARK: - Profiles Card
 struct ProfilesCard: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var license = LicenseManager.shared
     @Binding var showAdd: Bool
+    @Binding var showUpgrade: Bool
+
+    private var atFreeLimit: Bool {
+        !license.isPro && appState.serverProfiles.count >= LicenseManager.freeServerLimit
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -145,8 +154,11 @@ struct ProfilesCard: View {
                 Text("Saved Servers")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(AppTheme.mutedText)
+                if atFreeLimit {
+                    ProBadge()
+                }
                 Spacer()
-                AddServerButton(showAdd: $showAdd)
+                AddServerButton(showAdd: $showAdd, showUpgrade: $showUpgrade, atLimit: atFreeLimit)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -163,6 +175,26 @@ struct ProfilesCard: View {
                 }
             }
             .padding(.bottom, 8)
+
+            // Pro upsell banner when at free limit
+            if atFreeLimit {
+                Divider().overlay(AppTheme.border)
+                HStack(spacing: 8) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(AppTheme.accentBlue)
+                    Text("Upgrade to Pro for unlimited server profiles")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.mutedText)
+                    Spacer()
+                    Button("Upgrade") { showUpgrade = true }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.accentBlue)
+                        .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+            }
         }
         .glassCard(cornerRadius: 20)
     }
@@ -273,17 +305,33 @@ struct ConnectButton: View {
 // MARK: - Add Server Button
 struct AddServerButton: View {
     @Binding var showAdd: Bool
+    @Binding var showUpgrade: Bool
+    var atLimit: Bool = false
 
     var body: some View {
-        Button { showAdd = true } label: {
+        Button {
+            if atLimit { showUpgrade = true } else { showAdd = true }
+        } label: {
             HStack(spacing: 6) {
-                Image(systemName: "plus.circle.fill")
-                Text("Add Server")
+                Image(systemName: atLimit ? "star.fill" : "plus.circle.fill")
+                Text(atLimit ? "Go Pro" : "Add Server")
             }
             .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(AppTheme.accentBlue)
+            .foregroundColor(atLimit ? AppTheme.accentBlue : AppTheme.accentBlue)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Pro Badge
+struct ProBadge: View {
+    var body: some View {
+        Text("FREE")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundColor(AppTheme.accentBlue)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(AppTheme.accentBlue.opacity(0.15), in: Capsule())
+            .overlay(Capsule().stroke(AppTheme.accentBlue.opacity(0.3), lineWidth: 1))
     }
 }
 

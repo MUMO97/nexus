@@ -8,7 +8,9 @@ import Combine
 
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var license = LicenseManager.shared
     @State private var showDeleteLog = false
+    @State private var showUpgrade   = false
     // Tick every 30 s so token countdown updates
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     @State private var tick = false
@@ -297,6 +299,36 @@ struct SidebarView: View {
             .frame(maxWidth: .infinity)
             .padding(.bottom, 8)
 
+            // Pro upgrade banner (free users only)
+            if !license.isPro {
+                Button { showUpgrade = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(AppTheme.accentBlue)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Upgrade to Nexus Pro")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text("Unlimited servers · Auto-scan · More")
+                                .font(.system(size: 10))
+                                .foregroundColor(AppTheme.mutedText)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(AppTheme.mutedText)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(AppTheme.accentBlue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.accentBlue.opacity(0.2), lineWidth: 1))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                }
+                .buttonStyle(.plain)
+            }
+
             Divider().overlay(AppTheme.border)
 
             // MARK: Disconnect
@@ -317,8 +349,8 @@ struct SidebarView: View {
             .buttonStyle(.plain)
         }
         .background(AppTheme.surface)
-        // Tick the timer so token countdown label refreshes
         .onReceive(timer) { _ in tick.toggle() }
+        .sheet(isPresented: $showUpgrade) { ProUpgradeView() }
     }
 }
 
