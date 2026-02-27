@@ -346,7 +346,7 @@ You only need to do this once. Future releases will be fully notarized.
 
 ## Support
 
-- **Mac Admins Slack:** [#nexus-dependency-analyzer](https://macadmins.slack.com/channels/nexus-dependency-analyzer)
+- **Mac Admins Slack:** [#nexus-dependency-analyzer]([https://macadmins.slack.com/archives/C0AHJR1U1M2)
 - **Bug reports & feature requests:** [GitHub Issues](https://github.com/MUMO97/nexus/issues)
 - **Get Nexus Pro:** [celeast.gumroad.com/l/nexus](https://celeast.gumroad.com/l/nexus)
 
@@ -364,7 +364,7 @@ Copyright © 2025 Murat Kolar.
 
 <div align="center">
 
-Built by **Murat Kolar** — macOS/Jamf administrator and developer.
+Built by **Murat Kolar** — macOS/Jamf administrator.
 
 If Nexus has saved you time, consider starring the repo ⭐ or sharing it in your admin community.
 
