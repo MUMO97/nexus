@@ -326,7 +326,10 @@ final class AppState: ObservableObject {
     }
 
     func exportHTMLReport(eas list: [ExtensionAttribute]? = nil) {
-        let content = ExportService.html(eas: list ?? extensionAttributes, serverURL: connectedURL)
+        let data = list ?? extensionAttributes
+        let content = LicenseManager.shared.isPro
+            ? ExportService.htmlPro(eas: data, serverURL: connectedURL, scanDate: lastScanDate)
+            : ExportService.html(eas: data, serverURL: connectedURL)
         ExportService.saveHTMLWithPanel(content)
     }
 }
