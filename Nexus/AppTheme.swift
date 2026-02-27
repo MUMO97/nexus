@@ -16,6 +16,10 @@ struct AppTheme {
     static let warningOrange   = Color(hex: "FF9500")
     static let mutedText       = Color(hex: "8892A4")
     static let border          = Color.white.opacity(0.07)
+
+    // Pro exclusive
+    static let proGold         = Color(hex: "F5C842")
+    static let proGoldDim      = Color(hex: "C49A1A")
 }
 
 extension Color {

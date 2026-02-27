@@ -7,6 +7,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var license = LicenseManager.shared
 
     var body: some View {
         Group {
@@ -26,5 +27,11 @@ struct ContentView: View {
         }
         .animation(.spring(duration: 0.6), value: appState.isConnected)
         .onAppear { appState.loadProfiles() }
+        .sheet(isPresented: Binding(
+            get: { license.justUnlocked },
+            set: { if !$0 { license.clearJustUnlocked() } }
+        )) {
+            ProUnlockView()
+        }
     }
 }

@@ -13,7 +13,8 @@ import Combine
 final class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
 
-    @Published private(set) var isPro: Bool = false
+    @Published private(set) var isPro:        Bool = false
+    @Published private(set) var justUnlocked: Bool = false
 
     private let licenseKey = "nexus.license.key"
     private let proKey     = "nexus.pro.active"
@@ -35,7 +36,12 @@ final class LicenseManager: ObservableObject {
     func activate(licenseKey: String) {
         UserDefaults.standard.set(licenseKey, forKey: self.licenseKey)
         UserDefaults.standard.set(true, forKey: proKey)
-        isPro = true
+        isPro         = true
+        justUnlocked  = true
+    }
+
+    func clearJustUnlocked() {
+        justUnlocked = false
     }
 
     // MARK: - Deactivate

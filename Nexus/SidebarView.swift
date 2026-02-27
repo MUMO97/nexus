@@ -29,6 +29,15 @@ struct SidebarView: View {
                 Text("Nexus")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
+                if license.isPro {
+                    Text("PRO")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundColor(AppTheme.proGold)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(AppTheme.proGold.opacity(0.15), in: Capsule())
+                        .overlay(Capsule().stroke(AppTheme.proGold.opacity(0.4), lineWidth: 1))
+                        .neonGlow(color: AppTheme.proGold, radius: 4)
+                }
                 Spacer()
 
                 // Refresh button
@@ -114,10 +123,21 @@ struct SidebarView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 14)
 
-                SidebarStatRow(label: "Total EAs",      value: appState.stats.total,    color: AppTheme.accentBlue)
-                SidebarStatRow(label: "Safe to Delete", value: appState.stats.safe,     color: AppTheme.safeGreen)
-                SidebarStatRow(label: "In Use",         value: appState.stats.used,     color: AppTheme.dangerRed)
-                SidebarStatRow(label: "Orphaned",       value: appState.stats.orphaned, color: AppTheme.warningOrange)
+                if license.isPro {
+                    // Pro: animated cards in a 2x2 grid
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        ProStatCardView(title: "Total",    value: appState.stats.total,    total: appState.stats.total,    color: AppTheme.accentBlue,    icon: "square.grid.2x2.fill")
+                        ProStatCardView(title: "Safe",     value: appState.stats.safe,     total: appState.stats.total,    color: AppTheme.safeGreen,     icon: "checkmark.circle.fill")
+                        ProStatCardView(title: "In Use",   value: appState.stats.used,     total: appState.stats.total,    color: AppTheme.dangerRed,     icon: "exclamationmark.triangle.fill")
+                        ProStatCardView(title: "Orphaned", value: appState.stats.orphaned, total: appState.stats.total,    color: AppTheme.warningOrange, icon: "moon.zzz.fill")
+                    }
+                    .padding(.horizontal, 12)
+                } else {
+                    SidebarStatRow(label: "Total EAs",      value: appState.stats.total,    color: AppTheme.accentBlue)
+                    SidebarStatRow(label: "Safe to Delete", value: appState.stats.safe,     color: AppTheme.safeGreen)
+                    SidebarStatRow(label: "In Use",         value: appState.stats.used,     color: AppTheme.dangerRed)
+                    SidebarStatRow(label: "Orphaned",       value: appState.stats.orphaned, color: AppTheme.warningOrange)
+                }
 
                 if let scanDate = appState.lastScanDate {
                     let df: DateFormatter = {
